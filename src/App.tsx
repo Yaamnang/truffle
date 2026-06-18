@@ -1,13 +1,14 @@
 import { useMultiplayerPong } from './hooks/useMultiplayerPong';
 import { Lobby } from './components/Lobby';
+import { ReadyRoom } from './components/ReadyRoom';
 import { PongGame } from './components/PongGame';
 import { GameOver } from './components/GameOver';
 
 export default function App() {
   const {
     appState, playerNumber, winner,
-    gameStateRef, availableRooms,
-    createRoom, joinRoom, onPlayAgain,
+    gameStateRef, availableRooms, roomId,
+    createRoom, joinRoom, startGame, onPlayAgain,
   } = useMultiplayerPong();
 
   if (appState === 'auth') {
@@ -24,10 +25,15 @@ export default function App() {
       <Lobby
         status={appState}
         availableRooms={availableRooms}
+        roomId={roomId}
         onCreateRoom={createRoom}
         onJoinRoom={joinRoom}
       />
     );
+  }
+
+  if (appState === 'ready' && playerNumber) {
+    return <ReadyRoom playerNumber={playerNumber} onStart={startGame} />;
   }
 
   if (appState === 'playing' && playerNumber) {

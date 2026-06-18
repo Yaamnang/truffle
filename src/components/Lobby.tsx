@@ -1,19 +1,41 @@
+import { useState } from 'react';
 import type { GameRoom } from '../lib/supabase';
 
 interface Props {
   status: 'home' | 'waiting';
   availableRooms: GameRoom[];
+  roomId: string | null;
   onCreateRoom: () => void;
   onJoinRoom: (roomId: string) => void;
 }
 
-export function Lobby({ status, availableRooms, onCreateRoom, onJoinRoom }: Props) {
-  if (status === 'waiting') {
+export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom }: Props) {
+  const [copied, setCopied] = useState(false);
+  const code = roomId ? roomId.slice(-6).toUpperCase() : null;
+
+  const handleCopy = () => {
+    if (!code) return;
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (status === 'waiting' && code) {
     return (
       <div className="screen">
         <h1 className="title">PONG</h1>
         <p className="searching">Waiting for opponent<span className="dots" /></p>
-        <p className="hint">Share this page — your room is open</p>
+
+        <div className="room-share">
+          <p className="room-share-label">Your room code</p>
+          <div className="room-code">{code}</div>
+          <button className="btn btn-sm" onClick={handleCopy}>
+            {copied ? 'Copied!' : 'Copy Code'}
+          </button>
+        </div>
+
+        <p className="hint">Share this code — your friend can find it in the room list</p>
       </div>
     );
   }

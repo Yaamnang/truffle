@@ -6,7 +6,7 @@ import {
   WINNING_SCORE, PADDLE_H, CANVAS_H, PADDLE_SPEED,
 } from '../lib/gameEngine';
 
-export type AppState = 'auth' | 'home' | 'waiting' | 'playing' | 'gameover';
+export type AppState = 'auth' | 'home' | 'waiting' | 'ready' | 'playing' | 'gameover';
 
 export interface PongHook {
   appState: AppState;
@@ -14,8 +14,10 @@ export interface PongHook {
   winner: 1 | 2 | null;
   gameStateRef: React.MutableRefObject<GameState>;
   availableRooms: GameRoom[];
+  roomId: string | null;
   createRoom: () => void;
   joinRoom: (roomId: string) => void;
+  startGame: () => void;
   onPlayAgain: () => void;
 }
 
@@ -24,6 +26,7 @@ export function useMultiplayerPong(): PongHook {
   const [playerNumber, setPlayerNumber] = useState<1 | 2 | null>(null);
   const [winner, setWinner] = useState<1 | 2 | null>(null);
   const [availableRooms, setAvailableRooms] = useState<GameRoom[]>([]);
+  const [roomId, setRoomId] = useState<string | null>(null);
 
   const gameStateRef = useRef<GameState>(initialState());
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -85,6 +88,60 @@ export function useMultiplayerPong(): PongHook {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
   }, []);
 
+  const startHostLoop = useCallback(() => {
+    gameStateRef.current = initialState();
+
+    const FIXED_DT = 1000 / 60;
+    let accumulator = 0;
+    let lastTs = 0;
+
+    const loop = (ts: number) => {
+      if (appStateRef.current !== 'playing') return;
+
+      if (lastTs !== 0) accumulator += Math.min(ts - lastTs, 100);
+      lastTs = ts;
+
+      let gameOver: 1 | 2 | null = null;
+
+      while (accumulator >= FIXED_DT) {
+        const keys = keysRef.current;
+        let p1y = gameStateRef.current.paddle1Y;
+        if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) p1y = Math.max(0, p1y - PADDLE_SPEED);
+        if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) p1y = Math.min(CANVAS_H - PADDLE_H, p1y + PADDLE_SPEED);
+        gameStateRef.current = { ...gameStateRef.current, paddle1Y: p1y };
+
+        const { next } = stepGame(gameStateRef.current);
+        gameStateRef.current = next;
+        accumulator -= FIXED_DT;
+
+        if (next.score1 >= WINNING_SCORE || next.score2 >= WINNING_SCORE) {
+          gameOver = next.score1 >= WINNING_SCORE ? 1 : 2;
+          break;
+        }
+      }
+
+      if (gameOver) {
+        channelRef.current?.send({ type: 'broadcast', event: 'game_over', payload: { winner: gameOver } });
+        if (roomIdRef.current) {
+          supabase.from('game_rooms').update({ status: 'finished', winner: gameOver })
+            .eq('id', roomIdRef.current).then(() => {});
+        }
+        setWinner(gameOver);
+        setAppState('gameover');
+        return;
+      }
+
+      if (ts - lastBroadcastRef.current >= 33) {
+        channelRef.current?.send({ type: 'broadcast', event: 'state', payload: gameStateRef.current });
+        lastBroadcastRef.current = ts;
+      }
+
+      rafRef.current = requestAnimationFrame(loop);
+    };
+
+    rafRef.current = requestAnimationFrame(loop);
+  }, []);
+
   const setupChannel = useCallback((roomId: string, pNum: 1 | 2) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
 
@@ -93,10 +150,15 @@ export function useMultiplayerPong(): PongHook {
     });
 
     ch
+      .on('broadcast', { event: 'game_start' }, () => {
+        // Player 2 receives this when host clicks Start Game
+        if (pNum !== 2) return;
+        appStateRef.current = 'playing';
+        setAppState('playing');
+      })
       .on('broadcast', { event: 'state' }, ({ payload }) => {
         if (pNum !== 2 || appStateRef.current !== 'playing') return;
         const received = payload as GameState;
-        // Preserve local paddle2Y so movement feels immediate
         gameStateRef.current = { ...received, paddle2Y: gameStateRef.current.paddle2Y };
       })
       .on('broadcast', { event: 'paddle' }, ({ payload }) => {
@@ -110,7 +172,7 @@ export function useMultiplayerPong(): PongHook {
         setAppState('gameover');
       })
       .on('presence', { event: 'leave' }, ({ leftPresences }) => {
-        if (appStateRef.current !== 'playing') return;
+        if (appStateRef.current !== 'playing' && appStateRef.current !== 'ready') return;
         const myId = userIdRef.current;
         const opponentLeft = (leftPresences as unknown as Array<{ userId: string }>)
           .some(p => p.userId !== myId);
@@ -127,44 +189,6 @@ export function useMultiplayerPong(): PongHook {
     channelRef.current = ch;
   }, [stopGame]);
 
-  const startHostLoop = useCallback(() => {
-    gameStateRef.current = initialState();
-
-    const loop = (ts: number) => {
-      if (appStateRef.current !== 'playing') return;
-
-      const keys = keysRef.current;
-      let p1y = gameStateRef.current.paddle1Y;
-      if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) p1y = Math.max(0, p1y - PADDLE_SPEED);
-      if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) p1y = Math.min(CANVAS_H - PADDLE_H, p1y + PADDLE_SPEED);
-      gameStateRef.current = { ...gameStateRef.current, paddle1Y: p1y };
-
-      const { next } = stepGame(gameStateRef.current);
-      gameStateRef.current = next;
-
-      if (next.score1 >= WINNING_SCORE || next.score2 >= WINNING_SCORE) {
-        const w: 1 | 2 = next.score1 >= WINNING_SCORE ? 1 : 2;
-        channelRef.current?.send({ type: 'broadcast', event: 'game_over', payload: { winner: w } });
-        if (roomIdRef.current) {
-          supabase.from('game_rooms').update({ status: 'finished', winner: w })
-            .eq('id', roomIdRef.current).then(() => {});
-        }
-        setWinner(w);
-        setAppState('gameover');
-        return;
-      }
-
-      if (ts - lastBroadcastRef.current >= 33) {
-        channelRef.current?.send({ type: 'broadcast', event: 'state', payload: gameStateRef.current });
-        lastBroadcastRef.current = ts;
-      }
-
-      rafRef.current = requestAnimationFrame(loop);
-    };
-
-    rafRef.current = requestAnimationFrame(loop);
-  }, []);
-
   const createRoom = useCallback(async () => {
     const userId = userIdRef.current;
     if (!userId) return;
@@ -178,6 +202,7 @@ export function useMultiplayerPong(): PongHook {
     if (error || !room) return;
 
     roomIdRef.current = room.id;
+    setRoomId(room.id);
     setPlayerNumber(1);
     playerNumRef.current = 1;
     setAppState('waiting');
@@ -192,20 +217,18 @@ export function useMultiplayerPong(): PongHook {
           const updated = payload.new as { status: string; player2_id: string | null };
           if (updated.status === 'playing' && updated.player2_id) {
             setupChannel(room.id, 1);
-            setAppState('playing');
-            startHostLoop();
+            setAppState('ready');
             supabase.removeChannel(watchRoom);
           }
         }
       )
       .subscribe();
-  }, [setupChannel, startHostLoop]);
+  }, [setupChannel]);
 
   const joinRoom = useCallback(async (roomId: string) => {
     const userId = userIdRef.current;
     if (!userId) return;
 
-    // Atomic join — fails gracefully if another player grabbed it first
     const { data, error } = await supabase
       .from('game_rooms')
       .update({ player2_id: userId, status: 'playing' })
@@ -215,17 +238,24 @@ export function useMultiplayerPong(): PongHook {
       .select()
       .single();
 
-    if (error || !data) {
-      // Room was already taken — list will refresh via the lobby subscription
-      return;
-    }
+    if (error || !data) return;
 
     roomIdRef.current = data.id;
     setPlayerNumber(2);
     playerNumRef.current = 2;
     setupChannel(data.id, 2);
-    setAppState('playing');
+    setAppState('ready');
   }, [setupChannel]);
+
+  // Player 1 clicks Start Game
+  const startGame = useCallback(() => {
+    if (playerNumRef.current !== 1) return;
+    // Update ref synchronously so the loop's guard check passes immediately
+    appStateRef.current = 'playing';
+    setAppState('playing');
+    channelRef.current?.send({ type: 'broadcast', event: 'game_start', payload: {} });
+    startHostLoop();
+  }, [startHostLoop]);
 
   // Player 2 paddle loop — sends position to host
   useEffect(() => {
@@ -259,7 +289,6 @@ export function useMultiplayerPong(): PongHook {
   const onPlayAgain = useCallback(() => {
     stopGame();
     if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
-    // Clean up the finished room
     if (roomIdRef.current) {
       supabase.from('game_rooms').delete().eq('id', roomIdRef.current).then(() => {});
     }
@@ -268,8 +297,9 @@ export function useMultiplayerPong(): PongHook {
     setPlayerNumber(null);
     playerNumRef.current = null;
     roomIdRef.current = null;
+    setRoomId(null);
     setAppState('home');
   }, [stopGame]);
 
-  return { appState, playerNumber, winner, gameStateRef, availableRooms, createRoom, joinRoom, onPlayAgain };
+  return { appState, playerNumber, winner, gameStateRef, availableRooms, roomId, createRoom, joinRoom, startGame, onPlayAgain };
 }
