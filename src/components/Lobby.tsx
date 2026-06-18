@@ -7,21 +7,37 @@ interface Props {
   roomId: string | null;
   onCreateRoom: () => void;
   onJoinRoom: (roomId: string) => void;
+  onJoinByCode: (code: string) => Promise<'ok' | 'not_found' | 'taken'>;
 }
 
-export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom }: Props) {
+export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom, onJoinByCode }: Props) {
   const [copied, setCopied] = useState(false);
-  const code = roomId ? roomId.slice(-6).toUpperCase() : null;
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [joining, setJoining] = useState(false);
+
+  const displayCode = roomId ? roomId.slice(-6).toUpperCase() : null;
 
   const handleCopy = () => {
-    if (!code) return;
-    navigator.clipboard.writeText(code).then(() => {
+    if (!displayCode) return;
+    navigator.clipboard.writeText(displayCode).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
   };
 
-  if (status === 'waiting' && code) {
+  const handleJoinByCode = async () => {
+    const trimmed = code.trim();
+    if (trimmed.length !== 6) { setCodeError('Code must be 6 characters'); return; }
+    setCodeError('');
+    setJoining(true);
+    const result = await onJoinByCode(trimmed);
+    setJoining(false);
+    if (result === 'not_found') setCodeError('Room not found — check the code and try again');
+    if (result === 'taken') setCodeError('Room is no longer available');
+  };
+
+  if (status === 'waiting' && displayCode) {
     return (
       <div className="screen">
         <h1 className="title">PONG</h1>
@@ -29,13 +45,13 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom
 
         <div className="room-share">
           <p className="room-share-label">Your room code</p>
-          <div className="room-code">{code}</div>
+          <div className="room-code">{displayCode}</div>
           <button className="btn btn-sm" onClick={handleCopy}>
             {copied ? 'Copied!' : 'Copy Code'}
           </button>
         </div>
 
-        <p className="hint">Share this code — your friend can find it in the room list</p>
+        <p className="hint">Share this code with your friend</p>
       </div>
     );
   }
@@ -44,9 +60,28 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom
     <div className="screen">
       <h1 className="title">PONG</h1>
 
-      {availableRooms.length === 0 ? (
-        <p className="subtitle">No open games</p>
-      ) : (
+      {/* Join by code */}
+      <div className="code-join">
+        <p className="room-list-label">Have a code?</p>
+        <div className="code-join-row">
+          <input
+            className="code-input"
+            type="text"
+            placeholder="XXXXXX"
+            maxLength={6}
+            value={code}
+            onChange={(e) => { setCode(e.target.value.toUpperCase()); setCodeError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleJoinByCode(); }}
+          />
+          <button className="btn btn-sm" onClick={handleJoinByCode} disabled={joining}>
+            {joining ? '...' : 'Join'}
+          </button>
+        </div>
+        {codeError && <p className="code-error">{codeError}</p>}
+      </div>
+
+      {/* Room list */}
+      {availableRooms.length > 0 && (
         <div className="room-list">
           <p className="room-list-label">Open games</p>
           {availableRooms.map((room) => (

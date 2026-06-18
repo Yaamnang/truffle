@@ -17,6 +17,7 @@ export interface PongHook {
   roomId: string | null;
   createRoom: () => void;
   joinRoom: (roomId: string) => void;
+  joinByCode: (code: string) => Promise<'ok' | 'not_found' | 'taken'>;
   startGame: () => void;
   onPlayAgain: () => void;
 }
@@ -247,6 +248,46 @@ export function useMultiplayerPong(): PongHook {
     setAppState('ready');
   }, [setupChannel]);
 
+  const joinByCode = useCallback(async (code: string): Promise<'ok' | 'not_found' | 'taken'> => {
+    const userId = userIdRef.current;
+    if (!userId) return 'not_found';
+    const normalizedCode = code.trim().toLowerCase();
+
+    // Postgres cannot apply ilike directly to a uuid column, so fetch the
+    // small active waiting set and match the user-facing suffix client-side.
+    const { data: rooms, error: roomsError } = await supabase
+      .from('game_rooms')
+      .select('*')
+      .eq('status', 'waiting')
+      .gt('created_at', new Date(Date.now() - 120_000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (roomsError || !rooms) return 'not_found';
+
+    const room = rooms.find(({ id }) => id.toLowerCase().endsWith(normalizedCode));
+    if (!room) return 'not_found';
+
+    const { data, error } = await supabase
+      .from('game_rooms')
+      .update({ player2_id: userId, status: 'playing' })
+      .eq('id', room.id)
+      .is('player2_id', null)
+      .eq('status', 'waiting')
+      .select()
+      .single();
+
+    if (error || !data) return 'taken';
+
+    roomIdRef.current = data.id;
+    setRoomId(data.id);
+    setPlayerNumber(2);
+    playerNumRef.current = 2;
+    setupChannel(data.id, 2);
+    setAppState('ready');
+    return 'ok';
+  }, [setupChannel]);
+
   // Player 1 clicks Start Game
   const startGame = useCallback(() => {
     if (playerNumRef.current !== 1) return;
@@ -301,5 +342,5 @@ export function useMultiplayerPong(): PongHook {
     setAppState('home');
   }, [stopGame]);
 
-  return { appState, playerNumber, winner, gameStateRef, availableRooms, roomId, createRoom, joinRoom, startGame, onPlayAgain };
+  return { appState, playerNumber, winner, gameStateRef, availableRooms, roomId, createRoom, joinRoom, joinByCode, startGame, onPlayAgain };
 }
