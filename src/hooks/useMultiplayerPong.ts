@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, type GameRoom } from '../lib/supabase';
+import { playJoinSound, playStartSound } from '../lib/sounds';
 import {
   GameState, initialState, stepGame,
   WINNING_SCORE, PADDLE_H, CANVAS_H, PADDLE_SPEED,
@@ -217,6 +218,7 @@ export function useMultiplayerPong(): PongHook {
         (payload) => {
           const updated = payload.new as { status: string; player2_id: string | null };
           if (updated.status === 'playing' && updated.player2_id) {
+            playJoinSound();
             setupChannel(room.id, 1);
             setAppState('ready');
             supabase.removeChannel(watchRoom);
@@ -241,6 +243,7 @@ export function useMultiplayerPong(): PongHook {
 
     if (error || !data) return;
 
+    playJoinSound();
     roomIdRef.current = data.id;
     setPlayerNumber(2);
     playerNumRef.current = 2;
@@ -279,6 +282,7 @@ export function useMultiplayerPong(): PongHook {
 
     if (error || !data) return 'taken';
 
+    playJoinSound();
     roomIdRef.current = data.id;
     setRoomId(data.id);
     setPlayerNumber(2);
@@ -292,6 +296,7 @@ export function useMultiplayerPong(): PongHook {
   const startGame = useCallback(() => {
     if (playerNumRef.current !== 1) return;
     // Update ref synchronously so the loop's guard check passes immediately
+    playStartSound();
     appStateRef.current = 'playing';
     setAppState('playing');
     channelRef.current?.send({ type: 'broadcast', event: 'game_start', payload: {} });

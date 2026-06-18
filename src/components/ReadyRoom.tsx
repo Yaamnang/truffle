@@ -5,9 +5,13 @@ interface Props {
 
 export function ReadyRoom({ playerNumber, onStart }: Props) {
   return (
-    <div className="screen">
+    <div className="screen ready-screen">
       <h1 className="title">PONG</h1>
-      <p className="ready-badge">Both players connected</p>
+
+      <div className="ready-badge">
+        <span className="ready-dot" />
+        Both players connected
+      </div>
 
       {playerNumber === 1 ? (
         <>
