@@ -4,8 +4,9 @@ import { supabase, type GameRoom } from '../lib/supabase';
 import { playJoinSound, playStartSound } from '../lib/sounds';
 import {
   GameState, initialState, stepGame,
-  WINNING_SCORE, PADDLE_H, CANVAS_H, PADDLE_SPEED,
+  WINNING_SCORE, STEP_MS, NETWORK_SEND_INTERVAL_MS,
 } from '../lib/gameEngine';
+import { clampPaddleY, isGameKey, movePaddle, resolveDirection, type Direction } from '../lib/input';
 
 export type AppState = 'auth' | 'home' | 'waiting' | 'ready' | 'playing' | 'gameover';
 
@@ -21,6 +22,7 @@ export interface PongHook {
   joinByCode: (code: string) => Promise<'ok' | 'not_found' | 'taken'>;
   startGame: () => void;
   onPlayAgain: () => void;
+  setTouchDirection: (dir: Direction) => void;
 }
 
 export function useMultiplayerPong(): PongHook {
@@ -33,6 +35,7 @@ export function useMultiplayerPong(): PongHook {
   const gameStateRef = useRef<GameState>(initialState());
   const channelRef = useRef<RealtimeChannel | null>(null);
   const keysRef = useRef<Set<string>>(new Set());
+  const touchDirRef = useRef<Direction>(0);
   const rafRef = useRef<number | null>(null);
   const roomIdRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
@@ -93,7 +96,6 @@ export function useMultiplayerPong(): PongHook {
   const startHostLoop = useCallback(() => {
     gameStateRef.current = initialState();
 
-    const FIXED_DT = 1000 / 60;
     let accumulator = 0;
     let lastTs = 0;
 
@@ -105,16 +107,13 @@ export function useMultiplayerPong(): PongHook {
 
       let gameOver: 1 | 2 | null = null;
 
-      while (accumulator >= FIXED_DT) {
-        const keys = keysRef.current;
-        let p1y = gameStateRef.current.paddle1Y;
-        if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) p1y = Math.max(0, p1y - PADDLE_SPEED);
-        if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) p1y = Math.min(CANVAS_H - PADDLE_H, p1y + PADDLE_SPEED);
+      while (accumulator >= STEP_MS) {
+        const p1y = movePaddle(gameStateRef.current.paddle1Y, resolveDirection(keysRef.current, touchDirRef.current));
         gameStateRef.current = { ...gameStateRef.current, paddle1Y: p1y };
 
         const { next } = stepGame(gameStateRef.current);
         gameStateRef.current = next;
-        accumulator -= FIXED_DT;
+        accumulator -= STEP_MS;
 
         if (next.score1 >= WINNING_SCORE || next.score2 >= WINNING_SCORE) {
           gameOver = next.score1 >= WINNING_SCORE ? 1 : 2;
@@ -133,7 +132,7 @@ export function useMultiplayerPong(): PongHook {
         return;
       }
 
-      if (ts - lastBroadcastRef.current >= 33) {
+      if (ts - lastBroadcastRef.current >= NETWORK_SEND_INTERVAL_MS) {
         channelRef.current?.send({ type: 'broadcast', event: 'state', payload: gameStateRef.current });
         lastBroadcastRef.current = ts;
       }
@@ -165,7 +164,10 @@ export function useMultiplayerPong(): PongHook {
       })
       .on('broadcast', { event: 'paddle' }, ({ payload }) => {
         if (pNum !== 1 || appStateRef.current !== 'playing') return;
-        gameStateRef.current = { ...gameStateRef.current, paddle2Y: (payload as { y: number }).y };
+        // Never trust the remote value: a modified client could send NaN or an off-screen position.
+        const y = (payload as { y?: unknown }).y;
+        if (typeof y !== 'number' || !Number.isFinite(y)) return;
+        gameStateRef.current = { ...gameStateRef.current, paddle2Y: clampPaddleY(y) };
       })
       .on('broadcast', { event: 'game_over' }, ({ payload }) => {
         const w = (payload as { winner: 1 | 2 }).winner;
@@ -303,19 +305,35 @@ export function useMultiplayerPong(): PongHook {
     startHostLoop();
   }, [startHostLoop]);
 
-  // Player 2 paddle loop — sends position to host
+  // Player 2 paddle loop — moves in fixed steps (same speed as the host at any refresh rate)
+  // and sends the latest position to the host at a capped rate
   useEffect(() => {
     if (appState !== 'playing' || playerNumber !== 2) return;
     let rafId: number;
-    const loop = () => {
+    let accumulator = 0;
+    let lastTs = 0;
+    let lastSentY = gameStateRef.current.paddle2Y;
+    let lastSentAt = 0;
+
+    const loop = (ts: number) => {
       if (appStateRef.current !== 'playing') return;
-      const keys = keysRef.current;
-      let p2y = gameStateRef.current.paddle2Y;
-      if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) p2y = Math.max(0, p2y - PADDLE_SPEED);
-      if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) p2y = Math.min(CANVAS_H - PADDLE_H, p2y + PADDLE_SPEED);
-      if (p2y !== gameStateRef.current.paddle2Y) {
+
+      if (lastTs !== 0) accumulator += Math.min(ts - lastTs, 100);
+      lastTs = ts;
+
+      while (accumulator >= STEP_MS) {
+        const p2y = movePaddle(gameStateRef.current.paddle2Y, resolveDirection(keysRef.current, touchDirRef.current));
         gameStateRef.current = { ...gameStateRef.current, paddle2Y: p2y };
-        channelRef.current?.send({ type: 'broadcast', event: 'paddle', payload: { y: p2y } });
+        accumulator -= STEP_MS;
+      }
+
+      // Compare against the last value sent (not the last frame), so the final position
+      // is still delivered after the paddle stops, even if that frame was throttled out.
+      const y = gameStateRef.current.paddle2Y;
+      if (y !== lastSentY && ts - lastSentAt >= NETWORK_SEND_INTERVAL_MS) {
+        channelRef.current?.send({ type: 'broadcast', event: 'paddle', payload: { y } });
+        lastSentY = y;
+        lastSentAt = ts;
       }
       rafId = requestAnimationFrame(loop);
     };
@@ -325,11 +343,23 @@ export function useMultiplayerPong(): PongHook {
 
   // Key listeners
   useEffect(() => {
-    const down = (e: KeyboardEvent) => { keysRef.current.add(e.key); e.preventDefault(); };
+    // Only claim the game keys while playing, so typing in the room-code field still works.
+    const down = (e: KeyboardEvent) => {
+      if (appStateRef.current !== 'playing' || !isGameKey(e.key)) return;
+      keysRef.current.add(e.key);
+      e.preventDefault();
+    };
     const up = (e: KeyboardEvent) => keysRef.current.delete(e.key);
+    // A key released while the window is unfocused never fires keyup, which would leave the paddle moving.
+    const clearKeys = () => keysRef.current.clear();
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+    window.addEventListener('blur', clearKeys);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clearKeys);
+    };
   }, []);
 
   const onPlayAgain = useCallback(() => {
@@ -347,5 +377,10 @@ export function useMultiplayerPong(): PongHook {
     setAppState('home');
   }, [stopGame]);
 
-  return { appState, playerNumber, winner, gameStateRef, availableRooms, roomId, createRoom, joinRoom, joinByCode, startGame, onPlayAgain };
+  const setTouchDirection = useCallback((dir: Direction) => { touchDirRef.current = dir; }, []);
+
+  return {
+    appState, playerNumber, winner, gameStateRef, availableRooms, roomId,
+    createRoom, joinRoom, joinByCode, startGame, onPlayAgain, setTouchDirection,
+  };
 }

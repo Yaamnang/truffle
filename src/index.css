@@ -4,11 +4,27 @@
   padding: 0;
 }
 
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --touch-min: 48px;
+  --control-size: 88px;
+  --control-width: 72px;
+}
+
+html, body {
+  overscroll-behavior: none; /* no pull-to-refresh or rubber-banding while playing */
+}
+
 body {
   background: #000;
   color: #fff;
   font-family: 'Courier New', Courier, monospace;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -28,6 +44,8 @@ body {
   align-items: center;
   gap: 24px;
   padding: 40px 20px;
+  max-width: 100%;
+  min-width: 0;
   text-align: center;
 }
 
@@ -169,10 +187,13 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.25);
   color: #fff;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: 0.25em;
-  padding: 10px 14px;
+  width: 100%; /* an <input>'s natural width is ~20 characters, which would stretch the page on a phone */
+  min-width: 0;
+  min-height: 56px;
+  padding: var(--space-3) var(--space-4);
   text-transform: uppercase;
   outline: none;
   text-align: center;
@@ -187,8 +208,19 @@ body {
   border-color: rgba(255, 255, 255, 0.6);
 }
 
+/* Phones: stack the Join button under the code box at full width so it's a big thumb target */
+@media (max-width: 480px) {
+  .code-join { max-width: none; }
+  .code-join-row { flex-direction: column; }
+  .code-join-row .btn-sm {
+    min-height: var(--touch-min);
+    font-size: 14px;
+  }
+  .room-code { font-size: 36px; }
+}
+
 .code-error {
-  font-size: 12px;
+  font-size: 14px;
   color: rgba(255, 100, 100, 0.9);
   text-align: center;
 }
@@ -229,6 +261,10 @@ body {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
   flex: 1;
+  min-width: 0; /* lets the label shrink instead of pushing the row wider than a small phone */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-sm {
@@ -236,16 +272,124 @@ body {
   font-size: 12px;
 }
 
-/* Game canvas */
-.game-wrap {
+/* Game layout: the canvas keeps 4:3 and shrinks to whatever room the hint and controls leave */
+.game-layout {
+  /* vertical space taken by the hint + padding; touch layouts add the controls below */
+  --chrome-y: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding:
+    max(var(--space-2), env(safe-area-inset-top))
+    max(var(--space-2), env(safe-area-inset-right))
+    max(var(--space-2), env(safe-area-inset-bottom))
+    max(var(--space-2), env(safe-area-inset-left));
+}
+
+.game-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
 }
 
 .game-canvas {
   display: block;
-  max-width: 100vw;
+  width: min(100%, 800px, calc((100dvh - var(--chrome-y)) * 4 / 3));
+  height: auto;
+  aspect-ratio: 4 / 3;
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Touch controls (only rendered when the primary pointer is a finger) */
+.touch-controls {
+  display: flex;
+  gap: var(--space-3);
+  width: min(100%, 800px);
+}
+
+.touch-btn {
+  flex: 1;
+  height: var(--control-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-btn[data-pressed='true'] {
+  background: #fff;
+  color: #000;
+}
+
+.touch-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .game-layout {
+    /* hint + controls + gaps + padding */
+    --chrome-y: calc(var(--control-size) + 80px);
+  }
+
+  .btn-sm {
+    min-height: var(--touch-min);
+  }
+}
+
+/* Phone held sideways: no room under the canvas, so the buttons sit beside it */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .game-layout {
+    flex-direction: row;
+    --chrome-y: var(--space-4);
+  }
+
+  .game-stage {
+    width: auto;
+  }
+
+  .game-stage .hint {
+    display: none; /* the "YOU" label on the canvas already shows which paddle is yours */
+  }
+
+  .game-canvas {
+    width: min(
+      calc(100vw - var(--control-width) - var(--space-6) * 2),
+      calc((100dvh - var(--chrome-y)) * 4 / 3),
+      800px
+    );
+  }
+
+  .touch-controls {
+    flex-direction: column;
+    width: var(--control-width);
+  }
+
+  .touch-btn {
+    flex: none;
+    height: var(--control-width); /* square, compact enough to leave the court clear */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ready-screen, .ready-dot, .dots::after {
+    animation: none;
+  }
+  .btn { transition: none; }
 }

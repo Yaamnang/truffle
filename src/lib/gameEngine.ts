@@ -5,6 +5,10 @@ export const PADDLE_H = 90;
 export const BALL_R = 8;
 export const PADDLE_SPEED = 7;
 export const WINNING_SCORE = 7;
+// Game logic always advances in fixed 60 Hz steps so speed never depends on the display refresh rate.
+export const STEP_MS = 1000 / 60;
+// Min gap between realtime messages from one player (~30/s) to stay within Supabase message limits.
+export const NETWORK_SEND_INTERVAL_MS = 33;
 
 const BASE_SPEED = 5;
 const MAX_SPEED = 14;

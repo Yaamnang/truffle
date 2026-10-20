@@ -8,7 +8,7 @@ export default function App() {
   const {
     appState, playerNumber, winner,
     gameStateRef, availableRooms, roomId,
-    createRoom, joinRoom, joinByCode, startGame, onPlayAgain,
+    createRoom, joinRoom, joinByCode, startGame, onPlayAgain, setTouchDirection,
   } = useMultiplayerPong();
 
   if (appState === 'auth') {
@@ -38,7 +38,7 @@ export default function App() {
   }
 
   if (appState === 'playing' && playerNumber) {
-    return <PongGame gameStateRef={gameStateRef} playerNumber={playerNumber} />;
+    return <PongGame gameStateRef={gameStateRef} playerNumber={playerNumber} onTouchDirection={setTouchDirection} />;
   }
 
   if (appState === 'gameover') {

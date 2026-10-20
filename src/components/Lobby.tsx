@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import type { GameRoom } from '../lib/supabase';
+import { controlsHint } from '../lib/copy';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
+
+// Room codes are the last 6 hex characters of the room id, so drop anything else (spaces, "#", typos)
+// and pasted codes still work.
+const normalizeCode = (value: string) => value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 6);
 
 interface Props {
   status: 'home' | 'waiting';
@@ -15,6 +21,7 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
   const [joining, setJoining] = useState(false);
+  const touch = useCoarsePointer();
 
   const displayCode = roomId ? roomId.slice(-6).toUpperCase() : null;
 
@@ -69,15 +76,21 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom
             type="text"
             placeholder="XXXXXX"
             maxLength={6}
+            aria-label="Room code"
+            autoCapitalize="characters"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
             value={code}
-            onChange={(e) => { setCode(e.target.value.toUpperCase()); setCodeError(''); }}
+            enterKeyHint="go"
+            onChange={(e) => { setCode(normalizeCode(e.target.value)); setCodeError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleJoinByCode(); }}
           />
           <button className="btn btn-sm" onClick={handleJoinByCode} disabled={joining}>
             {joining ? '...' : 'Join'}
           </button>
         </div>
-        {codeError && <p className="code-error">{codeError}</p>}
+        {codeError && <p className="code-error" role="alert">{codeError}</p>}
       </div>
 
       {/* Room list */}
@@ -87,7 +100,7 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom
           {availableRooms.map((room) => (
             <div key={room.id} className="room-row">
               <span className="room-id">#{room.id.slice(-6).toUpperCase()}</span>
-              <span className="room-status">waiting for player</span>
+              <span className="room-status">waiting</span>
               <button className="btn btn-sm" onClick={() => onJoinRoom(room.id)}>
                 Join
               </button>
@@ -97,7 +110,7 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onJoinRoom
       )}
 
       <button className="btn" onClick={onCreateRoom}>Create Game</button>
-      <p className="hint">W / S or ↑ / ↓ to move your paddle</p>
+      <p className="hint">{controlsHint(touch)}</p>
     </div>
   );
 }
