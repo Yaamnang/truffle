@@ -3,6 +3,7 @@ import { drawGame, CANVAS_W, CANVAS_H, type GameState } from '../lib/gameEngine'
 import type { Direction } from '../lib/input';
 import { gameHint } from '../lib/copy';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useControlSide } from '../hooks/useControlSide';
 import { TouchControls } from './TouchControls';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 export function PongGame({ gameStateRef, playerNumber, onTouchDirection }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const touch = useCoarsePointer();
+  const [controlSide, toggleControlSide] = useControlSide();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -31,7 +33,7 @@ export function PongGame({ gameStateRef, playerNumber, onTouchDirection }: Props
   }, [gameStateRef, playerNumber]);
 
   return (
-    <div className="game-layout">
+    <div className="game-layout" data-control-side={controlSide}>
       <div className="game-stage">
         <canvas
           ref={canvasRef}
@@ -41,7 +43,7 @@ export function PongGame({ gameStateRef, playerNumber, onTouchDirection }: Props
         />
         <p className="hint">{gameHint(touch, playerNumber)}</p>
       </div>
-      {touch && <TouchControls onDirectionChange={onTouchDirection} />}
+      {touch && <TouchControls onDirectionChange={onTouchDirection} side={controlSide} onToggleSide={toggleControlSide} />}
     </div>
   );
 }

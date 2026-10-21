@@ -8,7 +8,7 @@ export default function App() {
   const {
     appState, playerNumber, winner,
     gameStateRef, availableRooms, roomId,
-    createRoom, joinRoom, joinByCode, startGame, onPlayAgain, setTouchDirection,
+    createRoom, cancelRoom, joinRoom, joinByCode, startGame, onPlayAgain, setTouchDirection,
   } = useMultiplayerPong();
 
   if (appState === 'auth') {
@@ -27,6 +27,7 @@ export default function App() {
         availableRooms={availableRooms}
         roomId={roomId}
         onCreateRoom={createRoom}
+        onCancelRoom={cancelRoom}
         onJoinRoom={joinRoom}
         onJoinByCode={joinByCode}
       />

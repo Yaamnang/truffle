@@ -31,6 +31,14 @@ body {
 }
 
 #root {
+  /* the frame the app is laid out in; the upright-phone rule below swaps width and height */
+  --play-w: 100vw;
+  --play-h: 100dvh;
+  /* padding per edge, never below the device's safe area (notch, home bar) */
+  --pad-t: max(var(--space-2), env(safe-area-inset-top));
+  --pad-r: max(var(--space-2), env(safe-area-inset-right));
+  --pad-b: max(var(--space-2), env(safe-area-inset-bottom));
+  --pad-l: max(var(--space-2), env(safe-area-inset-left));
   width: 100%;
   display: flex;
   align-items: center;
@@ -43,7 +51,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 24px;
-  padding: 40px 20px;
+  padding: max(40px, var(--pad-t)) max(20px, var(--pad-r)) max(40px, var(--pad-b)) max(20px, var(--pad-l));
   max-width: 100%;
   min-width: 0;
   text-align: center;
@@ -79,6 +87,14 @@ body {
 
 .btn:hover { opacity: 0.85; }
 .btn:active { opacity: 0.7; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Secondary action (e.g. Cancel): outlined so it never competes with the white primary button */
+.btn-outline {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
 
 /* Ready screen */
 .ready-screen {
@@ -159,6 +175,15 @@ body {
   color: rgba(255, 255, 255, 0.35);
 }
 
+.room-share-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.room-share-actions .btn {
+  margin-top: 0;
+}
+
 .room-code {
   font-size: 42px;
   font-weight: 900;
@@ -225,33 +250,101 @@ body {
   text-align: center;
 }
 
-/* Room list */
-.room-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* Lobby: the title, the play panel ("Have a code?" / Create Game) and the open-games board. They stack in
+   one column, and where there is room (see the wide-frame rule below) the board moves to a full-height
+   column on the right with the title above the play panel on the left. */
+.screen-lobby {
+  width: 100%;
+  max-width: 900px;
+}
+
+.screen-lobby > .lobby-panel {
   width: 100%;
   max-width: 420px;
 }
 
-.room-list-label {
+.lobby-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--panel-pad, var(--space-6));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.lobby-play {
+  justify-content: center;
+}
+
+.room-list {
+  min-height: 0;
+}
+
+.lobby-play > .btn {
+  width: 100%;
+  margin-top: 0;
+}
+
+.lobby-play .code-join {
+  gap: var(--space-2);
+}
+
+.panel-label {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.35);
-  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* "or have a code?" with a rule either side */
+.lobby-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.lobby-divider::before,
+.lobby-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Only the open-games rows scroll, so the label stays put and the page never grows with the number of rooms. */
+.room-list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  max-height: var(--board-max, 180px);
+  overflow-y: auto;
+  overscroll-behavior: contain; /* reaching the end of the list doesn't scroll the page behind it */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
 
 .room-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+.room-row .btn-sm {
+  margin-top: 0;
+  padding: 6px 16px;
+}
+
 .room-id {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.08em;
   flex: 0 0 auto;
@@ -274,7 +367,7 @@ body {
 
 /* Game layout: the canvas keeps 4:3 and shrinks to whatever room the hint and controls leave */
 .game-layout {
-  /* vertical space taken by the hint + padding; touch layouts add the controls below */
+  /* vertical space taken by the hint + padding */
   --chrome-y: 56px;
   display: flex;
   flex-direction: column;
@@ -282,13 +375,8 @@ body {
   justify-content: center;
   gap: var(--space-3);
   width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding:
-    max(var(--space-2), env(safe-area-inset-top))
-    max(var(--space-2), env(safe-area-inset-right))
-    max(var(--space-2), env(safe-area-inset-bottom))
-    max(var(--space-2), env(safe-area-inset-left));
+  min-height: var(--play-h);
+  padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
 }
 
 .game-stage {
@@ -304,7 +392,7 @@ body {
   width: min(100%, 800px, calc((100dvh - var(--chrome-y)) * 4 / 3));
   height: auto;
   aspect-ratio: 4 / 3;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.6); /* the court edge: top and bottom are the walls, the sides are the goals */
 }
 
 /* Touch controls (only rendered when the primary pointer is a finger) */
@@ -342,22 +430,72 @@ body {
   outline-offset: 2px;
 }
 
-@media (pointer: coarse) {
-  .game-layout {
-    /* hint + controls + gaps + padding */
-    --chrome-y: calc(var(--control-size) + 80px);
-  }
+/* Switch at the top of the button column that moves the column to the other side of the court */
+.side-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding: var(--space-1) 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.02em; /* "RIGHT SIDE" must fit the 72px column on one line, so both states are the same height */
+  white-space: nowrap;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
+.side-toggle:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* The knob sits on the side the buttons are on */
+.side-toggle-track {
+  display: flex;
+  justify-content: flex-end;
+  width: 48px;
+  height: 24px;
+  padding: 2px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.side-toggle-knob {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+}
+
+.side-toggle[data-side='left'] .side-toggle-track {
+  justify-content: flex-start;
+}
+
+/* Touch devices always play sideways: canvas on the left, the two buttons on the right.
+   --play-w / --play-h are the frame the game is laid out in; the portrait rule below swaps them. */
+@media (pointer: coarse) {
   .btn-sm {
     min-height: var(--touch-min);
   }
-}
 
-/* Phone held sideways: no room under the canvas, so the buttons sit beside it */
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
+  .room-row .btn-sm {
+    min-height: 44px;
+  }
+
   .game-layout {
     flex-direction: row;
-    --chrome-y: var(--space-4);
+    touch-action: none; /* no pinch, double-tap zoom or scroll during a match */
+  }
+
+  .game-layout[data-control-side='left'] {
+    flex-direction: row-reverse;
   }
 
   .game-stage {
@@ -370,8 +508,8 @@ body {
 
   .game-canvas {
     width: min(
-      calc(100vw - var(--control-width) - var(--space-6) * 2),
-      calc((100dvh - var(--chrome-y)) * 4 / 3),
+      calc(var(--play-w) - var(--pad-l) - var(--pad-r) - var(--space-3) - var(--control-width)),
+      calc((var(--play-h) - var(--pad-t) - var(--pad-b)) * 4 / 3),
       800px
     );
   }
@@ -384,6 +522,103 @@ body {
   .touch-btn {
     flex: none;
     height: var(--control-width); /* square, compact enough to leave the court clear */
+  }
+}
+
+/* Upright phone: the whole app turns a quarter-turn clockwise, so the top of the phone (address bar,
+   notch) is on the left and everything reads as landscape. Safe-area insets are physical, so each one
+   moves to the frame edge it now sits on (frame top = phone right, right = bottom, bottom = left,
+   left = top). The app scrolls inside the turned frame if a screen is taller; children centre with
+   auto margins so a tall screen never gets its top cut off. */
+@media (pointer: coarse) and (orientation: portrait) {
+  #root {
+    --play-w: 100dvh;
+    --play-h: 100dvw;
+    --pad-t: max(var(--space-2), env(safe-area-inset-right));
+    --pad-r: max(var(--space-2), env(safe-area-inset-bottom));
+    --pad-b: max(var(--space-2), env(safe-area-inset-left));
+    --pad-l: max(var(--space-2), env(safe-area-inset-top));
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: var(--play-w);
+    height: var(--play-h);
+    align-items: flex-start;
+    overflow-y: auto;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+
+  .screen, .game-layout {
+    margin-block: auto;
+  }
+}
+
+/* Wide frames (desktop windows from 720px, and every turned or landscape phone frame): with open games
+   listed, the title and play panel stack in the left column and the board takes the right column at full
+   height, so Create Game never moves off screen. Narrower windows keep one column with a short board. */
+@media (min-width: 720px),
+  (pointer: coarse) and (orientation: portrait),
+  (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  .screen-lobby.has-rooms {
+    --board-max: max(160px, calc(var(--play-h) - 170px)); /* screen padding, panel padding and label */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto 1fr;
+    align-items: stretch;
+    gap: var(--space-4) var(--space-6);
+  }
+
+  .screen-lobby.has-rooms > .lobby-panel { max-width: none; }
+  .screen-lobby.has-rooms > .title { grid-column: 1; }
+  .screen-lobby.has-rooms > .lobby-play { grid-column: 1; grid-row: 2; align-self: start; } /* natural height; only the board runs full height */
+  .screen-lobby.has-rooms > .room-list { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+/* Short frames (a phone in landscape, or the turned portrait frame): tighter screens. Width media
+   queries still see the phone's physical width, so the stacked Join button of narrow phones is undone
+   here. */
+@media (pointer: coarse) and (orientation: portrait),
+  (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+  .screen {
+    gap: var(--space-3);
+    padding-top: max(var(--space-3), var(--pad-t));
+    padding-bottom: max(var(--space-3), var(--pad-b));
+  }
+
+  .title { font-size: 40px; }
+  .code-join-row { flex-direction: row; }
+  /* the code box shares a row with Join in a half-width panel; smaller type keeps all 6 characters visible */
+  .code-input {
+    font-size: 20px;
+    letter-spacing: 0.15em;
+    padding: var(--space-1) var(--space-3);
+  }
+
+  /* the play panel is a compact block on phones: 44px controls (the WCAG touch minimum), smaller type */
+  .lobby-play .code-input,
+  .lobby-play .btn-sm,
+  .lobby-play > .btn {
+    min-height: 44px;
+  }
+
+  .lobby-play > .btn {
+    padding: var(--space-2) var(--space-6);
+    font-size: 14px;
+  }
+
+  .lobby-play .btn-sm { font-size: 12px; }
+  .lobby-play .code-join-row .btn { margin-top: 0; } /* .btn's 8px top margin would stretch the whole row */
+  .lobby-play .hint { font-size: 12px; }
+  .room-share { padding: var(--space-3) var(--space-6); gap: var(--space-2); }
+
+  .lobby-panel {
+    --panel-pad: var(--space-3);
+    gap: var(--space-2);
+  }
+
+  .screen-lobby.has-rooms {
+    --board-max: max(120px, calc(var(--play-h) - 80px)); /* screen padding, panel padding and label */
+    row-gap: var(--space-3);
   }
 }
 

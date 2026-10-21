@@ -106,8 +106,8 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, player
   ctx.fillText(String(score2), CANVAS_W / 2 + 70, 70);
 
   // "YOU" label
-  ctx.font = '11px "Courier New", monospace';
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = 'bold 18px "Courier New", monospace'; // still readable when a phone shrinks the canvas to ~60%
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
   if (playerNum === 1) {
     ctx.textAlign = 'left';
     ctx.fillText('YOU', P1_X, CANVAS_H - 10);

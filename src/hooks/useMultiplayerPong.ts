@@ -8,6 +8,9 @@ import {
 } from '../lib/gameEngine';
 import { clampPaddleY, isGameKey, movePaddle, resolveDirection, type Direction } from '../lib/input';
 
+// How long a waiting room stays listed and joinable (the lobby list and join-by-code both use it).
+const ROOM_LISTING_MS = 120_000;
+
 export type AppState = 'auth' | 'home' | 'waiting' | 'ready' | 'playing' | 'gameover';
 
 export interface PongHook {
@@ -18,6 +21,7 @@ export interface PongHook {
   availableRooms: GameRoom[];
   roomId: string | null;
   createRoom: () => void;
+  cancelRoom: () => Promise<void>;
   joinRoom: (roomId: string) => void;
   joinByCode: (code: string) => Promise<'ok' | 'not_found' | 'taken'>;
   startGame: () => void;
@@ -31,9 +35,11 @@ export function useMultiplayerPong(): PongHook {
   const [winner, setWinner] = useState<1 | 2 | null>(null);
   const [availableRooms, setAvailableRooms] = useState<GameRoom[]>([]);
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
   const gameStateRef = useRef<GameState>(initialState());
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const watchChannelRef = useRef<RealtimeChannel | null>(null);
   const keysRef = useRef<Set<string>>(new Set());
   const touchDirRef = useRef<Direction>(0);
   const rafRef = useRef<number | null>(null);
@@ -53,12 +59,12 @@ export function useMultiplayerPong(): PongHook {
       if (cancelled) return;
       if (session?.user) {
         userIdRef.current = session.user.id;
-        setAppState('home');
+        setAuthUserId(session.user.id);
       } else {
         supabase.auth.signInAnonymously().then(({ data, error }) => {
           if (cancelled || error || !data.user) return;
           userIdRef.current = data.user.id;
-          setAppState('home');
+          setAuthUserId(data.user.id);
         });
       }
     });
@@ -69,14 +75,15 @@ export function useMultiplayerPong(): PongHook {
   useEffect(() => {
     if (appState !== 'home') return;
 
+    let active = true; // a fetch that lands after we leave the home screen must not overwrite the list
     const fetchRooms = () => {
       supabase
         .from('game_rooms')
         .select('*')
         .eq('status', 'waiting')
-        .gt('created_at', new Date(Date.now() - 120_000).toISOString())
+        .gt('created_at', new Date(Date.now() - ROOM_LISTING_MS).toISOString())
         .order('created_at', { ascending: false })
-        .then(({ data }) => setAvailableRooms(data ?? []));
+        .then(({ data }) => { if (active) setAvailableRooms(data ?? []); });
     };
 
     fetchRooms();
@@ -86,7 +93,7 @@ export function useMultiplayerPong(): PongHook {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_rooms' }, fetchRooms)
       .subscribe();
 
-    return () => { supabase.removeChannel(ch); };
+    return () => { active = false; supabase.removeChannel(ch); };
   }, [appState]);
 
   const stopGame = useCallback(() => {
@@ -193,6 +200,36 @@ export function useMultiplayerPong(): PongHook {
     channelRef.current = ch;
   }, [stopGame]);
 
+  // Player 1 is in a room that is waiting for an opponent (just created, or picked up again after a reload)
+  const enterWaiting = useCallback((id: string) => {
+    roomIdRef.current = id;
+    setRoomId(id);
+    setPlayerNumber(1);
+    playerNumRef.current = 1;
+    setAppState('waiting');
+
+    // Watch for player 2 joining
+    const watchRoom = supabase
+      .channel(`room-watch:${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `id=eq.${id}` },
+        (payload) => {
+          const updated = payload.new as { status: string; player2_id: string | null };
+          if (updated.status === 'playing' && updated.player2_id) {
+            playJoinSound();
+            setupChannel(id, 1);
+            setAppState('ready');
+            supabase.removeChannel(watchRoom);
+            watchChannelRef.current = null;
+          }
+        }
+      )
+      .subscribe();
+
+    watchChannelRef.current = watchRoom;
+  }, [setupChannel]);
+
   const createRoom = useCallback(async () => {
     const userId = userIdRef.current;
     if (!userId) return;
@@ -205,30 +242,60 @@ export function useMultiplayerPong(): PongHook {
 
     if (error || !room) return;
 
-    roomIdRef.current = room.id;
-    setRoomId(room.id);
-    setPlayerNumber(1);
-    playerNumRef.current = 1;
-    setAppState('waiting');
+    enterWaiting(room.id);
+  }, [enterWaiting]);
 
-    // Watch for player 2 joining
-    const watchRoom = supabase
-      .channel(`room-watch:${room.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'game_rooms', filter: `id=eq.${room.id}` },
-        (payload) => {
-          const updated = payload.new as { status: string; player2_id: string | null };
-          if (updated.status === 'playing' && updated.player2_id) {
-            playJoinSound();
-            setupChannel(room.id, 1);
-            setAppState('ready');
-            supabase.removeChannel(watchRoom);
-          }
-        }
-      )
-      .subscribe();
-  }, [setupChannel]);
+  // First screen after sign-in. A reload (phone tab discarded while switching to a chat app to send the
+  // code, screen lock, dev-server restart) wipes the app state but not the room, so pick up a room of ours
+  // that is still waiting and joinable instead of leaving it open with nobody watching it.
+  useEffect(() => {
+    if (!authUserId) return;
+    let cancelled = false;
+
+    supabase
+      .from('game_rooms')
+      .select('*')
+      .eq('player1_id', authUserId)
+      .eq('status', 'waiting')
+      .is('player2_id', null)
+      .gt('created_at', new Date(Date.now() - ROOM_LISTING_MS).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const room = data?.[0];
+        if (room) enterWaiting(room.id);
+        else setAppState('home');
+      });
+
+    return () => { cancelled = true; };
+  }, [authUserId, enterWaiting]);
+
+  // Player 1 gives up while waiting. The room is closed with a conditional update (there is no delete
+  // policy), which only matches while nobody has joined: if an opponent got in first the update matches
+  // nothing, we stay put, and the room watcher moves us on to the ready screen.
+  const cancelRoom = useCallback(async () => {
+    const id = roomIdRef.current;
+    if (!id || playerNumRef.current !== 1 || appStateRef.current !== 'waiting') return;
+
+    const { data, error } = await supabase
+      .from('game_rooms')
+      .update({ status: 'finished' })
+      .eq('id', id)
+      .eq('status', 'waiting')
+      .is('player2_id', null)
+      .select();
+
+    if (!error && (data?.length ?? 0) === 0) return;
+
+    if (watchChannelRef.current) { supabase.removeChannel(watchChannelRef.current); watchChannelRef.current = null; }
+    roomIdRef.current = null;
+    setRoomId(null);
+    setAvailableRooms((rooms) => rooms.filter((r) => r.id !== id));
+    setPlayerNumber(null);
+    playerNumRef.current = null;
+    setAppState('home');
+  }, []);
 
   const joinRoom = useCallback(async (roomId: string) => {
     const userId = userIdRef.current;
@@ -264,7 +331,7 @@ export function useMultiplayerPong(): PongHook {
       .from('game_rooms')
       .select('*')
       .eq('status', 'waiting')
-      .gt('created_at', new Date(Date.now() - 120_000).toISOString())
+      .gt('created_at', new Date(Date.now() - ROOM_LISTING_MS).toISOString())
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -381,6 +448,6 @@ export function useMultiplayerPong(): PongHook {
 
   return {
     appState, playerNumber, winner, gameStateRef, availableRooms, roomId,
-    createRoom, joinRoom, joinByCode, startGame, onPlayAgain, setTouchDirection,
+    createRoom, cancelRoom, joinRoom, joinByCode, startGame, onPlayAgain, setTouchDirection,
   };
 }

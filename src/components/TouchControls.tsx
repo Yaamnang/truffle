@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Direction } from '../lib/input';
+import type { ControlSide } from '../hooks/useControlSide';
+import { controlSideAriaLabel, controlSideLabel } from '../lib/copy';
 
 interface Props {
   onDirectionChange: (dir: Direction) => void;
+  side: ControlSide;
+  onToggleSide: () => void;
 }
 
 type Button = 'up' | 'down';
@@ -17,7 +21,7 @@ const Chevron = ({ up }: { up: boolean }) => (
 );
 
 /** Hold-to-move buttons. Tracks pointers by id so two fingers can't leave a button stuck. */
-export function TouchControls({ onDirectionChange }: Props) {
+export function TouchControls({ onDirectionChange, side, onToggleSide }: Props) {
   const pointers = useRef<Record<Button, Set<number>>>({ up: new Set(), down: new Set() });
   const [pressed, setPressed] = useState<Record<Button, boolean>>({ up: false, down: false });
 
@@ -68,6 +72,17 @@ export function TouchControls({ onDirectionChange }: Props) {
 
   return (
     <div className="touch-controls">
+      {/* A plain click (press and release on it), so a thumb sliding in from the buttons below does not flip it mid-rally */}
+      <button
+        type="button"
+        aria-label={controlSideAriaLabel(side)}
+        className="side-toggle"
+        data-side={side}
+        onClick={onToggleSide}
+      >
+        <span className="side-toggle-label">{controlSideLabel(side)}</span>
+        <span className="side-toggle-track"><span className="side-toggle-knob" /></span>
+      </button>
       <button
         type="button"
         className="touch-btn"
