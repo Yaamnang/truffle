@@ -842,7 +842,14 @@ body {
   .lobby-play .btn-sm { font-size: 12px; }
   .lobby-play .code-join-row .btn { margin-top: 0; } /* .btn's 8px top margin would stretch the whole row */
   .lobby-play .hint { font-size: 12px; }
-  .room-share { padding: var(--space-3) var(--space-6); gap: var(--space-2); }
+  /* compact code block, so the waiting screen (with its Controls button) fits a phone's short frame */
+  .room-share { padding: var(--space-3) var(--space-4); gap: var(--space-2); }
+  .room-code { font-size: 28px; }
+  .room-share-actions .btn-sm {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-4);
+  }
+  .searching { font-size: 16px; }
 
   .lobby-panel {
     --panel-pad: var(--space-3);
