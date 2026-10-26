@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { GameRoom } from '../lib/supabase';
-import { controlsHint } from '../lib/copy';
+import { keyboardHint } from '../lib/copy';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { ControlsButton } from './ControlsButton';
 
 // Room codes are the last 6 hex characters of the room id, so drop anything else (spaces, "#", typos)
 // and pasted codes still work.
@@ -15,9 +16,10 @@ interface Props {
   onCancelRoom: () => Promise<void>;
   onJoinRoom: (roomId: string) => void;
   onJoinByCode: (code: string) => Promise<'ok' | 'not_found' | 'taken'>;
+  onOpenControls: () => void;
 }
 
-export function Lobby({ status, availableRooms, roomId, onCreateRoom, onCancelRoom, onJoinRoom, onJoinByCode }: Props) {
+export function Lobby({ status, availableRooms, roomId, onCreateRoom, onCancelRoom, onJoinRoom, onJoinByCode, onOpenControls }: Props) {
   const [copied, setCopied] = useState(false);
   const [code, setCode] = useState('');
   const [codeError, setCodeError] = useState('');
@@ -72,6 +74,7 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onCancelRo
         </div>
 
         <p className="hint">Share this code with your friend</p>
+        {touch && <ControlsButton onOpen={onOpenControls} />}
       </div>
     );
   }
@@ -111,7 +114,8 @@ export function Lobby({ status, availableRooms, roomId, onCreateRoom, onCancelRo
         <p className="lobby-divider">or</p>
         <button className="btn" onClick={onCreateRoom}>Create Game</button>
 
-        <p className="hint">{controlsHint(touch)}</p>
+        {/* on touch screens the button names the current controls, standing in for the keyboard hint */}
+        {touch ? <ControlsButton onOpen={onOpenControls} /> : <p className="hint">{keyboardHint}</p>}
       </section>
 
       {hasRooms && (

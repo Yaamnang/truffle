@@ -1,27 +1,62 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Direction } from '../lib/input';
-import type { ControlSide } from '../hooks/useControlSide';
-import { controlSideAriaLabel, controlSideLabel } from '../lib/copy';
+import type { ControlLayout } from '../lib/controls';
+import { useControlPrefs } from '../hooks/useControlPrefs';
+import { useReleaseOnHide } from '../hooks/useReleaseOnHide';
+import { controlsCopy } from '../lib/copy';
+import { Chevron } from './icons';
+import { ControlsButton } from './ControlsButton';
+import { Joystick } from './Joystick';
 
 interface Props {
   onDirectionChange: (dir: Direction) => void;
-  side: ControlSide;
-  onToggleSide: () => void;
+  onOpenControls: () => void;
+}
+
+/** The on-screen controls in the player's chosen layout. */
+export function TouchControls(props: Props) {
+  const { layout } = useControlPrefs();
+  // Keyed by layout so switching layouts always starts with nothing held
+  return <ControlColumns key={layout} layout={layout} {...props} />;
+}
+
+/**
+ * A column on each side of the court, always both, so the court never moves. Flip only swaps which column the
+ * controls sit in; the controls button stays at the top of the right-hand column whatever the layout.
+ */
+function ControlColumns({ layout, onDirectionChange, onOpenControls }: Props & { layout: ControlLayout }) {
+  const { flipped } = useControlPrefs();
+  const holdButton = useHoldButtons(onDirectionChange);
+
+  let left: React.ReactNode = null;
+  let right: React.ReactNode = null;
+  if (layout === 'split') {
+    // Up on the left and down on the right; flipped swaps them
+    left = holdButton(flipped ? 'down' : 'up');
+    right = holdButton(flipped ? 'up' : 'down');
+  } else {
+    const control = layout === 'joystick'
+      ? <Joystick onDirectionChange={onDirectionChange} />
+      : <div className="control-stack">{holdButton('up')}{holdButton('down')}</div>;
+    if (flipped) left = control;
+    else right = control;
+  }
+
+  return (
+    <>
+      <div className="control-col" data-slot="start">{left}</div>
+      <div className="control-col" data-slot="end">
+        <ControlsButton compact onOpen={onOpenControls} />
+        {right}
+      </div>
+    </>
+  );
 }
 
 type Button = 'up' | 'down';
 
-const Chevron = ({ up }: { up: boolean }) => (
-  <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" focusable="false">
-    <path
-      d={up ? 'M5 15l7-7 7 7' : 'M5 9l7 7 7-7'}
-      fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square"
-    />
-  </svg>
-);
-
 /** Hold-to-move buttons. Tracks pointers by id so two fingers can't leave a button stuck. */
-export function TouchControls({ onDirectionChange, side, onToggleSide }: Props) {
+function useHoldButtons(onDirectionChange: (dir: Direction) => void) {
   const pointers = useRef<Record<Button, Set<number>>>({ up: new Set(), down: new Set() });
   const [pressed, setPressed] = useState<Record<Button, boolean>>({ up: false, down: false });
 
@@ -37,70 +72,31 @@ export function TouchControls({ onDirectionChange, side, onToggleSide }: Props) 
     publish();
   }, [publish]);
 
-  // A finger lifted while the page is hidden or the app is backgrounded never fires pointerup.
-  useEffect(() => {
-    const onVisibility = () => { if (document.hidden) releaseAll(); };
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('blur', releaseAll);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('blur', releaseAll);
-      onDirectionChange(0);
-    };
-  }, [releaseAll, onDirectionChange]);
+  useReleaseOnHide(releaseAll);
+  useEffect(() => () => onDirectionChange(0), [onDirectionChange]);
 
-  const handlers = (button: Button) => ({
-    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
-      e.currentTarget.setPointerCapture(e.pointerId);
-      pointers.current[button].add(e.pointerId);
-      publish();
-    },
-    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => {
-      pointers.current[button].delete(e.pointerId);
-      publish();
-    },
-    onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => {
-      pointers.current[button].delete(e.pointerId);
-      publish();
-    },
-    onLostPointerCapture: (e: React.PointerEvent<HTMLButtonElement>) => {
-      pointers.current[button].delete(e.pointerId);
-      publish();
-    },
-    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
-  });
+  const release = (button: Button) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    pointers.current[button].delete(e.pointerId);
+    publish();
+  };
 
-  return (
-    <div className="touch-controls">
-      {/* A plain click (press and release on it), so a thumb sliding in from the buttons below does not flip it mid-rally */}
-      <button
-        type="button"
-        aria-label={controlSideAriaLabel(side)}
-        className="side-toggle"
-        data-side={side}
-        onClick={onToggleSide}
-      >
-        <span className="side-toggle-label">{controlSideLabel(side)}</span>
-        <span className="side-toggle-track"><span className="side-toggle-knob" /></span>
-      </button>
-      <button
-        type="button"
-        className="touch-btn"
-        aria-label="Move paddle up"
-        data-pressed={pressed.up}
-        {...handlers('up')}
-      >
-        <Chevron up />
-      </button>
-      <button
-        type="button"
-        className="touch-btn"
-        aria-label="Move paddle down"
-        data-pressed={pressed.down}
-        {...handlers('down')}
-      >
-        <Chevron up={false} />
-      </button>
-    </div>
+  return (button: Button) => (
+    <button
+      type="button"
+      className="touch-btn"
+      aria-label={controlsCopy[button]}
+      data-pressed={pressed[button]}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        pointers.current[button].add(e.pointerId);
+        publish();
+      }}
+      onPointerUp={release(button)}
+      onPointerCancel={release(button)}
+      onLostPointerCapture={release(button)}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <Chevron up={button === 'up'} />
+    </button>
   );
 }

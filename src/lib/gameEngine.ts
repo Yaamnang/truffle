@@ -14,6 +14,7 @@ const BASE_SPEED = 5;
 const MAX_SPEED = 14;
 const P1_X = 20;
 const P2_X = CANVAS_W - 20 - PADDLE_W;
+const GOAL_BAR_W = 6; // the "your side" bar drawn along your goal edge
 
 export interface GameState {
   ball: { x: number; y: number; vx: number; vy: number };
@@ -87,6 +88,13 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, player
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
+  // Your side, marked without colour or motion: a tinted half court and a solid bar along the goal you defend
+  const ownLeft = playerNum === 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.09)';
+  ctx.fillRect(ownLeft ? 0 : CANVAS_W / 2, 0, CANVAS_W / 2, CANVAS_H);
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillRect(ownLeft ? 0 : CANVAS_W - GOAL_BAR_W, 0, GOAL_BAR_W, CANVAS_H);
+
   // Center line
   ctx.save();
   ctx.setLineDash([8, 12]);
@@ -101,13 +109,17 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, player
   // Scores
   ctx.font = 'bold 52px "Courier New", monospace';
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  // Your score reads brighter than the opponent's
+  const own = 'rgba(255,255,255,0.85)';
+  const other = 'rgba(255,255,255,0.4)';
+  ctx.fillStyle = playerNum === 1 ? own : other;
   ctx.fillText(String(score1), CANVAS_W / 2 - 70, 70);
+  ctx.fillStyle = playerNum === 2 ? own : other;
   ctx.fillText(String(score2), CANVAS_W / 2 + 70, 70);
 
   // "YOU" label
   ctx.font = 'bold 18px "Courier New", monospace'; // still readable when a phone shrinks the canvas to ~60%
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
   if (playerNum === 1) {
     ctx.textAlign = 'left';
     ctx.fillText('YOU', P1_X, CANVAS_H - 10);
@@ -116,11 +128,14 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, player
     ctx.fillText('YOU', P2_X + PADDLE_W, CANVAS_H - 10);
   }
 
-  // Paddles
-  ctx.fillStyle = '#fff';
+  // Paddles: yours solid white, the opponent's dimmed but still clearly visible
+  const ownPaddle = '#fff';
+  const otherPaddle = 'rgba(255,255,255,0.55)';
+  ctx.fillStyle = ownLeft ? ownPaddle : otherPaddle;
   ctx.beginPath();
   ctx.roundRect(P1_X, paddle1Y, PADDLE_W, PADDLE_H, 4);
   ctx.fill();
+  ctx.fillStyle = ownLeft ? otherPaddle : ownPaddle;
   ctx.beginPath();
   ctx.roundRect(P2_X, paddle2Y, PADDLE_W, PADDLE_H, 4);
   ctx.fill();

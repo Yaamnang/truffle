@@ -1,9 +1,15 @@
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { ControlsButton } from './ControlsButton';
+
 interface Props {
   playerNumber: 1 | 2;
   onStart: () => void;
+  onOpenControls: () => void;
 }
 
-export function ReadyRoom({ playerNumber, onStart }: Props) {
+export function ReadyRoom({ playerNumber, onStart, onOpenControls }: Props) {
+  const touch = useCoarsePointer();
+
   return (
     <div className="screen ready-screen">
       <h1 className="title">PONG</h1>
@@ -24,6 +30,8 @@ export function ReadyRoom({ playerNumber, onStart }: Props) {
           <p className="hint">You are the right paddle</p>
         </>
       )}
+
+      {touch && <ControlsButton onOpen={onOpenControls} />}
     </div>
   );
 }

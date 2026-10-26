@@ -3,19 +3,20 @@ import { drawGame, CANVAS_W, CANVAS_H, type GameState } from '../lib/gameEngine'
 import type { Direction } from '../lib/input';
 import { gameHint } from '../lib/copy';
 import { useCoarsePointer } from '../hooks/useCoarsePointer';
-import { useControlSide } from '../hooks/useControlSide';
+import { useControlPrefs } from '../hooks/useControlPrefs';
 import { TouchControls } from './TouchControls';
 
 interface Props {
   gameStateRef: React.MutableRefObject<GameState>;
   playerNumber: 1 | 2;
   onTouchDirection: (dir: Direction) => void;
+  onOpenControls: () => void;
 }
 
-export function PongGame({ gameStateRef, playerNumber, onTouchDirection }: Props) {
+export function PongGame({ gameStateRef, playerNumber, onTouchDirection, onOpenControls }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const touch = useCoarsePointer();
-  const [controlSide, toggleControlSide] = useControlSide();
+  const { layout } = useControlPrefs();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -33,7 +34,7 @@ export function PongGame({ gameStateRef, playerNumber, onTouchDirection }: Props
   }, [gameStateRef, playerNumber]);
 
   return (
-    <div className="game-layout" data-control-side={controlSide}>
+    <div className="game-layout" data-controls={touch ? layout : undefined}>
       <div className="game-stage">
         <canvas
           ref={canvasRef}
@@ -43,7 +44,7 @@ export function PongGame({ gameStateRef, playerNumber, onTouchDirection }: Props
         />
         <p className="hint">{gameHint(touch, playerNumber)}</p>
       </div>
-      {touch && <TouchControls onDirectionChange={onTouchDirection} side={controlSide} onToggleSide={toggleControlSide} />}
+      {touch && <TouchControls onDirectionChange={onTouchDirection} onOpenControls={onOpenControls} />}
     </div>
   );
 }
