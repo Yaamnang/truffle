@@ -840,6 +840,18 @@ body {
   }
 
   .lobby-play .btn-sm { font-size: 12px; }
+
+  /* narrower play panel with smaller type, so the start screen's block sits compactly in the middle of the phone */
+  .screen-lobby > .lobby-panel { max-width: 300px; }
+  .screen-lobby .lobby-play .code-input { font-size: 16px; }
+  .screen-lobby .lobby-play > .btn { font-size: 13px; }
+
+  /* Controls is secondary: sized to its label rather than full width, still a 44px tap target */
+  .lobby-play > .controls-btn {
+    width: auto;
+    padding: var(--space-2) var(--space-4);
+    font-size: 11px;
+  }
   .lobby-play .code-join-row .btn { margin-top: 0; } /* .btn's 8px top margin would stretch the whole row */
   .lobby-play .hint { font-size: 12px; }
   /* compact code block, so the waiting screen (with its Controls button) fits a phone's short frame */
